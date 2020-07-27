@@ -1,0 +1,558 @@
+#include <TimerOne.h>
+#include <Time.h>
+#include <TimeLib.h>
+#define i_consumo A9 // entrada do sensor de corrente de consumo
+#define v_consumo A1 // entrada da medida de tensão entregue
+#define v_solar A7 //entrada da medida de tensão solar
+#define i_solar A15 // entrada do sensor de corrente solar
+#define v_eolico A5 //entrada da medida de tensão eolica
+#define i_eolico A13 // entrada do sensor de corrente eolica
+#define v_rede A3 //entrada da medida de tensão da rede
+#define i_rede A11 // entrada do sensor de corrente da rede
+#define r1 22 //saída para ligar o relé 1
+#define r2 25 //saída para ligar o relé 2
+#define r3 26 //saída para ligar o relé 3
+#define r4 29 //saída para ligar o relé 4
+#define r5 30 //saída para ligar o relé 5
+#define r6 33 //saída para ligar o relé 6
+#define r7 34//saída para ligar o relé 7
+#define solar 38 //saída para ligar o relé da energia solar
+#define eolico 41//saída para ligar o relé da energia eolica
+#define rede 42 //saída para ligar o relé da rede
+float print_i_inst =0;
+float print_v_inst =0;
+float print_pot_inst =0;
+float print_pot_cons =0;
+float print_v_solar =0;
+float print_i_solar =0;
+float print_pot_solar =0;
+float print_v_eolico =0;
+float print_i_eolico =0;
+float print_pot_eolico =0;
+float print_v_rede =0;
+float print_i_rede =0;
+float print_pot_rede = 0;
+float print_pot_kW =0;
+float print_pot_real =0;
+float sum_v;
+float sum_i;
+float sum_v_solar ;
+float sum_i_solar ;
+float sum_v_eolico;
+float sum_i_eolico;
+float sum_v_rede ;
+float sum_i_rede ;
+float v_inst=0; // voltagem instantanea
+float i_inst=0; // corrente instantanea
+float pot_inst=0; //potência instantanea
+float pot_cons=0; //total de potencia consumida
+float preco=0; //total a pagar
+float tarifa = 0.63356396; // preço por kWh
+float volt_solar = 0;
+float current_solar = 0;
+float pot_solar = 0; //informações geração solar
+float volt_eolico = 0, current_eolico = 0,
+pot_eolico = 0; //informações geração eolico
+float volt_rede = 0;
+float current_rede =0;
+float pot_rede =0; //informações geração darede
+float print_pot_Wh;
+float print_pot_kWh;
+char comando; // variavel para comandos de imprimir na tela
+//Variaveis de estado lógico
+boolean solar_st=0; //solar ligado ou desligado
+boolean eolico_st=0; //eolico ligado ou desligado
+boolean rede_st = 0; //rede ligada ou desligada
+boolean state_r1 = 0; //estado do resistor 1
+boolean state_r2 = 0; //estado do resistor 2
+boolean state_r3 = 0; //estado do resistor 3
+boolean state_r4 = 0; //estado do resistor 4
+boolean state_r5 = 0; //estado do resistor 5
+boolean state_r6 = 0; //estado do resistor 6
+boolean state_r7 = 0; //estado do resistor 7
+//Variaveis auxiliares
+int n_medidas=0;
+int mVperAmp = 100;
+float RawValue = 0;
+float RawValue2 = 0;
+float RawValueE = 0;
+float RawValue2E = 0;
+float RawValueS = 0;
+float RawValue2S = 0;
+float RawValueR = 0;
+float RawValue2R = 0;
+float ACSoffset = 2490;
+float aux = 0;
+float Amps = 0;
+int j = 1;
+int i=0;
+59
+int freq = 0;
+int t_execucao = 1;
+int amostras=0;
+long periodo;
+long tempo=0;
+long tempo_ant=0;
+long tempo_inicializacao;
+int cont=0;
+void setup() {
+
+ Serial.begin(9600); // abre a porta serial e ajusta a taxa de transferência para 9600 bps
+ pinMode(A9, INPUT);
+ pinMode(A1, INPUT);
+ pinMode(A11, INPUT);
+ pinMode(A3, INPUT);
+ pinMode(A13, INPUT);
+ pinMode(A5, INPUT);
+ pinMode(A15, INPUT);
+ pinMode(A7, INPUT);
+ pinMode(r1, OUTPUT);
+ digitalWrite(r1, state_r1);
+ pinMode(r2, OUTPUT);
+ digitalWrite(r2, state_r2);
+ pinMode(r3, OUTPUT);
+ digitalWrite(r3, state_r3);
+ pinMode(r4, OUTPUT);
+ digitalWrite(r4, state_r4);
+ pinMode(r5, OUTPUT);
+ digitalWrite(r5, state_r5);
+ pinMode(r6, OUTPUT);
+ digitalWrite(r6, state_r6);
+ pinMode(r7, OUTPUT);
+ digitalWrite(r7, state_r7);
+ pinMode(eolico, OUTPUT);
+ pinMode(rede, OUTPUT);
+ pinMode(solar, OUTPUT);
+ //testando_reles();
+}
+void loop() {
+ long tempo_s = (millis() -
+millis()%1000)/1000; // calcula tempo em segundos exatos
+float tempo = millis()/1000; // calcula tempo em segundos
+
+ if (tempo_s == t_execucao){ //executa issoa cada segundo
+ sum_v =0;
+ sum_i =0;
+ sum_v_solar = 0;
+ sum_i_solar = 0;
+ sum_v_eolico = 0;
+ sum_i_eolico = 0;
+ sum_v_rede = 0;
+ sum_i_rede = 0;
+ for(i=0; i<60; i++){ //60 amostras
+ coleta_dados();
+ sum_v = sum_v + v_inst;
+ sum_i = sum_i + i_inst;
+ sum_v_solar = sum_v_solar + volt_solar;
+ sum_i_solar = sum_i_solar +
+current_solar;
+ sum_v_eolico = sum_v_eolico +
+volt_eolico;
+ sum_i_eolico = sum_i_eolico +
+current_eolico;
+ sum_v_rede = sum_v_rede + volt_rede;
+ sum_i_rede = sum_i_rede +
+current_rede;
+ }
+ periodo = tempo - tempo_ant ; // calcula o
+periodo em segundos
+ tempo_ant= tempo;
+ amostras = 60;
+ freq = amostras/periodo; // calcula a taxa
+de amostra
+ print_i_inst = sum_i /amostras;
+ print_v_inst = sum_v /amostras;
+ print_pot_inst = print_i_inst * print_v_inst;
+
+ print_pot_cons = (print_pot_inst +
+print_pot_cons); // potência em Ws
+ print_pot_Wh = print_pot_cons / 3600;
+ print_pot_kWh = print_pot_Wh / 1000; //
+potência em kWh
+ print_pot_real = print_pot_kW * 9700/5;//
+potência em kWh redimensionada ao mundo real.
+
+ print_v_solar = sum_v_solar /amostras;
+ print_i_solar = sum_i_solar /amostras;
+ print_pot_solar = print_v_solar *
+print_i_solar;
+
+ print_v_eolico = sum_v_eolico /amostras;
+ print_i_eolico = sum_i_eolico/amostras;
+ print_pot_eolico = print_v_eolico *
+print_i_eolico;
+
+ print_v_rede = sum_v_rede /amostras;
+ print_i_rede = sum_i_rede /amostras;
+ print_pot_rede = print_v_rede *
+print_i_rede;
+ if(rede_st==1){
+ preco = (print_pot_rede * tarifa) + preco;
+ }
+ cont=0;
+ t_execucao++;
+ }
+ // envia dados apenas quando dados forem também recebidos:
+ if (Serial.available() > 0) {
+ // lê o byte que está entrando:
+ comando = Serial.read();
+ if(comando == 'D'){
+ debug();
+ // imprime informações de consumo
+ }
+ if(comando == 'C'){
+ imprimir_consumo();
+ // imprime informações de consumo
+ }
+ if(comando == 'G'){
+ imprimir_geracao();
+ // imprime informações de geração
+ }
+ if(comando == 'I'){
+ imprimir_consumidores();
+ // imprime informações e estados dos equipamentos
+ }
+ if(comando == '1'){
+ state_r1 = !state_r1;
+ digitalWrite(r1, state_r1);
+ //inverte saida logica para ligar/desligar chuveiro
+ }
+ if(comando == '2'){
+ state_r2 = !state_r2;
+ digitalWrite(r2, state_r2);
+ //inverte saida logica para ligar/desligar ferro elétrico
+ }
+ if(comando == '3'){
+ state_r3 = !state_r3;
+ digitalWrite(r3, state_r3);
+ //inverte saida logica para ligar/desligar geladeira
+ }
+ if(comando == '4'){
+ state_r4 = !state_r4;
+ digitalWrite(r4, state_r4);
+ //inverte saida logica para ligar/desligar ar 7500btu
+ }
+ if(comando == '5'){
+ state_r5 = !state_r5;
+ digitalWrite(r5, state_r5);
+ //inverte saida logica para ligar/desligar iluminação geral
+ }
+ if(comando == '6'){
+ state_r6 = !state_r6;
+ digitalWrite(r6, state_r6);
+ //inverte saida logica para ligar/desligar TUGs
+ }
+ if(comando == '7'){
+ state_r7 = !state_r7;
+ digitalWrite(r7, state_r7);
+ //inverte saida logica para ligar/desligar maquina de lavar
+ }
+ if(comando == 'S'){
+ solar_st = !solar_st;
+ digitalWrite(solar, solar_st);
+ //inverte saida logica para ligar/desligar energia solar
+ }
+ if(comando == 'R'){
+ rede_st = !rede_st;
+ digitalWrite(rede, rede_st);
+ //inverte saida logica para ligar/desligar energia da rede
+ }
+ if(comando == 'E'){
+ eolico_st = !eolico_st;
+ digitalWrite(eolico, eolico_st);
+ //inverte saida logica para ligar/desligar gerador eólico
+ }
+ }
+}//end loop
+void coleta_dados(){
+ n_medidas++;
+ //Serial.println(n_medidas);
+ cont++;
+ //Serial.println(cont);
+/*------------------------------------------------------------------*/
+/*--------------------COLETA DE DADOS DO CONSUMO--------------------*/
+ //lê os dados das portas analógicas
+ RawValue = analogRead(i_consumo);
+ RawValue2 = analogRead(v_consumo);
+ //calcula corrente
+ aux = (RawValue / 1024.0) * 5000; // Gets you mV
+ i_inst = ((aux - ACSoffset) / mVperAmp);
+ //calcula tensão
+ v_inst = (RawValue2*5/1024)*(2);
+ //calcula potencia
+ pot_inst = i_inst * v_inst;
+/*-----------------COLETA DE DADOS DA ENERGIA SOLAR----------------*/
+ //lê os dados das portas analógicas
+ RawValueS = analogRead(i_solar);
+ RawValue2S = analogRead(v_solar);
+ //calcula corrente
+ aux = (RawValueS / 1024.0) * 5000; // Gets you mV
+ current_solar = ((aux - ACSoffset) / mVperAmp);
+
+ //calcula tensão
+ volt_solar = (RawValue2S*5/1024)*(10);
+ //calcula potencia
+ pot_solar = current_solar * volt_solar;
+/*----------------COLETA DE DADOS DA ENERGIA EOLICA----------------*/
+ //lê os dados das portas analógicas
+ RawValueE = analogRead(i_eolico);
+ RawValue2E = analogRead(v_eolico);  //calcula corrente
+ aux = (RawValueE/1024.0) * 5000; // Gets you mV
+ current_eolico = ((aux - ACSoffset) / mVperAmp);
+ //calcula tensão
+ volt_eolico = (RawValue2E*5/1024)*(10);
+ //calcula potencia
+ pot_eolico = volt_eolico * current_eolico;
+/*----------------COLETA DE DADOS DA ENERGIA DA REDE---------------*/
+ //lê os dados das portas analógicas
+ RawValueR = analogRead(i_rede);
+ RawValue2R = analogRead(v_rede);
+ //calcula corrente
+ aux = (RawValueR / 1024.0) * 5000; // Gets you mV
+ current_rede = ((aux - ACSoffset) / mVperAmp);
+ //calcula tensão
+ volt_rede = (RawValue2R*5/1024)*(10);
+ //calcula potencia
+ pot_rede = volt_rede * current_rede;
+/*-----------------------------------------------------------------*/
+ }
+void imprimir_consumo(){
+ Serial.println("-------------------CONSUMO-------------------");
+ Serial.print("Tempo Medindo ");
+ Serial.print("\t");
+ Serial.print("\t");
+ Serial.print(hour());
+ Serial.print(":");
+ Serial.print(minute());
+ Serial.print(":");
+ Serial.println(second());
+ Serial.print("Numero de Medidas: \t");
+ Serial.println(n_medidas);
+ Serial.print("Período: \t");
+ Serial.print("\t");
+ Serial.println(periodo);
+ Serial.print("Frequencia: \t");
+ Serial.print("\t");
+ Serial.println(freq);
+ Serial.print("Voltagem Instantânea: ");
+ Serial.print("\t");
+ Serial.print(print_v_inst);
+ Serial.println(" V");
+ Serial.print("Corrente Instantânea: ");
+ Serial.print("\t");
+ Serial.print(print_i_inst);
+ Serial.println(" A");
+ Serial.print("Potência Instantânea: ");
+ Serial.print("\t");
+ Serial.print(print_pot_inst);
+ Serial.println(" W");
+ Serial.print("Potência Consumida: ");
+ Serial.print("\t");
+ Serial.print(print_pot_cons);
+ Serial.println(" Ws");
+ Serial.print("\t");
+ Serial.print("\t");
+ Serial.print("\t");
+ Serial.print(print_pot_Wh);
+ Serial.println(" Wh");
+ Serial.print("\t");
+ Serial.print("\t");
+ Serial.print("\t");
+ Serial.print(print_pot_kWh);
+ Serial.println(" kWh");
+ Serial.print("\t");
+ Serial.print("\t");
+ Serial.print("\t");
+ Serial.print(print_pot_real);
+ Serial.println(" kWh");
+ Serial.println("---------------------------------------------");
+}
+void imprimir_geracao(){
+ Serial.println("-------------------GERAÇÃO-------------------");
+ Serial.println("");
+
+Serial.println("____________________SOLAR____________________");
+ Serial.print("Estado: ");
+ Serial.println(solar_st);
+ Serial.print("Tensão: ");
+ Serial.print(print_v_solar);
+ Serial.println(" V");
+ Serial.print("Corrente: ");
+ Serial.print(print_i_solar);
+ Serial.println(" A");
+ Serial.print("Potência: ");
+ Serial.print(print_pot_solar);
+ Serial.println(" W");
+ Serial.println("");
+
+Serial.println("____________________EÓLICO___________________");
+ Serial.print("Estado: ");
+ Serial.println(eolico_st);
+ Serial.print("Tensão: ");
+ Serial.print(print_v_eolico);
+ Serial.println(" V");
+ Serial.print("Corrente: ");
+ Serial.print(print_i_eolico);
+ Serial.println(" A");
+ Serial.print("Potência: ");
+ Serial.print(print_pot_eolico);
+ Serial.println(" W");
+ Serial.println("");
+
+Serial.println("____________________REDE_____________________");
+ Serial.print("Estado: ");
+ Serial.println(rede_st);
+ Serial.print("Tensão: ");
+ Serial.print(print_v_rede);
+ Serial.println(" V");
+ Serial.print("Corrente: ");
+ Serial.print(print_i_rede);
+ Serial.println("A");
+ Serial.print("Potência: ");
+ Serial.print(pot_rede);
+ Serial.println(" W");
+ Serial.println("");
+ Serial.println("---------------------------------------------");
+}
+void debug(){
+ //testando_reles();
+ Serial.println("-----------------DEBUG----------------");
+ Serial.println("-----------------TEMPO----------------");
+ Serial.print("t_execucao ");
+ Serial.println(t_execucao);
+ Serial.print("periodo ");
+ Serial.println(periodo);
+ Serial.print("tempo");
+ Serial.println(tempo);
+ Serial.print("tempo_ant");
+ Serial.println(tempo_ant);
+ Serial.print("frequencia");
+ Serial.println(freq);
+ Serial.print("n_medidas");
+ Serial.println(n_medidas);
+ Serial.print("amostras");
+ Serial.println(amostras);
+ Serial.print("RawValueR = ");
+ Serial.println(RawValueR);
+ Serial.print("RawValue2R = ");
+ Serial.println(RawValue2R);
+ Serial.print("aux = ");
+ Serial.println(aux);
+ Serial.print("current_rede = ");
+ Serial.println(current_rede);
+ Serial.print("volt_rede = ");
+ Serial.println(volt_rede);
+ Serial.print("pot_rede = ");
+ Serial.println(pot_rede);
+ Serial.print("--------------------------------------");
+ Serial.println("---------------------------------------------");
+
+ }
+void imprimir_consumidores(){
+ Serial.println("-----------------CONSUMIDORES----------------");
+ Serial.print("R1 \t Chuveiro \t \t 27 \t ");
+ Serial.println(state_r1);
+ Serial.print("R2 \t Ferro Elétrico \t 120 \t ");
+ Serial.println(state_r2);
+ Serial.print("R3 \t Geladeira \t \t 470 \t ");
+ Serial.println(state_r3);
+ Serial.print("R4 \t Ar 7500 BTU \t \t 110 \t ");
+ Serial.println(state_r4);
+ Serial.print("R5 \t Iluminação Geral \t 130 \t ");
+ Serial.println(state_r5);
+ Serial.print("R6 \t TUGs \t \t \t 110 \t ");
+ Serial.println(state_r6);
+ Serial.print("R7 \t Maquina de Lavar \t 43 \t ");
+ Serial.println(state_r7);
+ Serial.println("---------------------------------------------");
+}
+void testando_reles(){
+ //comando de inicialização:
+Serial.print("Inicializando, por favor aguarde . . .");
+state_r1 = !state_r1;
+digitalWrite(r1, state_r1);
+Serial.print(" R1");
+delay(500);
+state_r2 = !state_r2;
+digitalWrite(r2, state_r2);
+Serial.print(" R2");
+delay(500);
+state_r3 = !state_r3;
+digitalWrite(r3, state_r3);
+Serial.print(" R3");
+delay(500);
+state_r4 = !state_r4;
+digitalWrite(r4, state_r4);
+Serial.print(" R4");
+delay(500);
+state_r5 = !state_r5;
+digitalWrite(r5, state_r5);
+Serial.print(" R5");
+delay(500);
+state_r6 = !state_r6;
+digitalWrite(r6, state_r6);
+Serial.print(" R6");
+delay(500);
+state_r7 = !state_r7;
+digitalWrite(r7, state_r7);
+Serial.print(" R7");
+delay(500);
+solar_st = !solar_st;
+digitalWrite(solar, solar_st);
+Serial.print(" S");
+delay(500);
+rede_st = !rede_st;
+digitalWrite(rede, rede_st);
+Serial.print(" R");
+delay(500);
+eolico_st = !eolico_st;
+digitalWrite(eolico, eolico_st);
+Serial.print(" E");
+delay(500);
+state_r1 = !state_r1;
+digitalWrite(r1, state_r1);
+Serial.print(" R1");
+delay(500);
+state_r2 = !state_r2;
+digitalWrite(r2, state_r2);
+Serial.print(" R2");
+delay(500);
+state_r3 = !state_r3;
+digitalWrite(r3, state_r3);
+Serial.print(" R3");
+delay(500);
+state_r4 = !state_r4;
+digitalWrite(r4, state_r4);
+Serial.print(" R4");
+delay(500);
+state_r5 = !state_r5;
+digitalWrite(r5, state_r5);
+Serial.print(" R5");
+delay(500);
+state_r6 = !state_r6;
+digitalWrite(r6, state_r6);
+Serial.print(" R6");
+delay(500);
+state_r7 = !state_r7;
+digitalWrite(r7, state_r7);
+Serial.print(" R7");
+delay(500);
+solar_st = !solar_st;
+digitalWrite(solar, solar_st);
+Serial.print(" S");
+delay(500);
+rede_st = !rede_st;
+digitalWrite(rede, rede_st);
+Serial.print(" R");
+delay(500);
+eolico_st = !eolico_st;
+digitalWrite(eolico, eolico_st);
+Serial.println(" E");
+delay(500);
+Serial.println(" OK");
+
+tempo_inicializacao = millis()/1000;
+Serial.println("Tempo de inicialização:");
+Serial.print(tempo_inicializacao);
+
+ }
